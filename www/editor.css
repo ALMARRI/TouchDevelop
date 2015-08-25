@@ -1,7 +1,7 @@
 /* Fonts */
 
 div.calcButtonHelp {
-    font-family: "Segoe UI", "Segoe WP", "Helvetica Neue", Sans-Serif;
+    font-family: "Open Sans TD", "Segoe UI", "Segoe WP", "Helvetica Neue", Sans-Serif;
 }
 
 .floatingFrown,
@@ -18,7 +18,7 @@ div.calcButtonHelp {
 .tutTileLinkMore,
 .hubSectionHeader
 {
-    font-family: "Segoe UI Light", "Segoe UI", "Segoe WP Light", "Segoe WP",
+    font-family: "Open Sans TD", "Segoe UI Light", "Segoe UI", "Segoe WP Light", "Segoe WP",
              "HelveticaNeue-Light", "Helvetica Neue Light", "Helvetica Neue", Sans-Serif;
     font-weight: 200;
 }
