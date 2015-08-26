@@ -1,6 +1,6 @@
 @font-face {
-    font-family: "Open Sans TD";
-    src: url(OpenSansTD.ttf);
+    font-family: "Deja Vu Sans";
+    src: url(DejaVuSans.ttf);
 }
 
 body {
@@ -13,7 +13,7 @@ body {
 }
 
 body {
-    font-family: "Open Sans TD", "Segoe UI", "Segoe WP", "Helvetica Neue", Sans-Serif;
+    font-family: "Segoe UI", "Segoe WP", "Deja Vu Sans", "Helvetica Neue", Sans-Serif;
 }
 
 
@@ -35,7 +35,7 @@ html {
 
 .symbol
 {
-    font-family: "Open Sans TD", "Segoe UI Symbol", sans-serif;
+    font-family: "Segoe UI Symbol", "Deja Vu Sans", sans-serif;
     opacity: 0.8;
 }
 
@@ -1762,7 +1762,7 @@ height: 100%;
 }
 
 .appBarSymbol {
-    font-family: "Open Sans TD", "Segoe UI Symbol";
+    font-family: "Segoe UI Symbol", "Deja Vu Sans";
     font-size:1.2em;
     color:black;
     position:absolute;
