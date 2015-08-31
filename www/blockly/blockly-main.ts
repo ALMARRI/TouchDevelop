@@ -40,6 +40,8 @@ module TDev {
     receive(<External.Message>event.data);
   });
 
+  var onResize = () => {};
+
   function receive(message: External.Message) {
     console.log("[inner message]", message);
 
@@ -48,6 +50,10 @@ module TDev {
         setupEditor(<External.Message_Init> message);
         setupButtons((<External.Message_Init> message).fota);
         setupCurrentVersion(<External.Message_Init> message);
+        break;
+
+      case External.MessageType.Resized:
+        onResize();
         break;
 
       case External.MessageType.SaveAck:
@@ -249,19 +255,19 @@ module TDev {
   }
 
   function setDescription(x: string) {
-    $("#script-description").text(x);
+    $("#script-description").val(x);
   }
 
   function setName(x: string) {
-    $("#script-name").text(x);
+    $("#script-name").val(x);
   }
 
   function getDescription() {
-    return $("#script-description").text();
+    return $("#script-description").val();
   }
 
   function getName() {
-    return $("#script-name").text();
+    return $("#script-name").val();
   }
 
   var dirty = false;
@@ -272,10 +278,10 @@ module TDev {
   }
   function setupPopups() {
     /* Hide all popups when user clicks elsewhere. */
-    $(document).click(clearPopups);
-    /* Catch clicks on popups themselves to disable above handler. */
-    $(".popup").click((e: Event) => {
-      e.stopPropagation();
+    $(document).click((e: Event) => {
+      if ($(e.target).closest(".popup, .roundbutton").length)
+        return;
+      clearPopups();
     });
   }
 
@@ -325,7 +331,7 @@ module TDev {
         scaleSpeed: 1.1
       },
     });
-    var onResize = () => {
+    onResize = () => {
       // Compute the absolute coordinates and dimensions of blocklyArea.
       var element = blocklyArea;
       var x = 0;
@@ -364,7 +370,7 @@ module TDev {
     setName(message.script.metadata.name);
     setDescription(message.script.metadata.comment);
     if (!message.script.baseSnapshot && !message.script.metadata.comment) {
-      setDescription("A terrific BBC micro:bit program written with the Block Editor!");
+      setDescription("A terrific BBC micro:bit program written with the Microsoft Block Editor!");
       markLocalChanges();
     }
 

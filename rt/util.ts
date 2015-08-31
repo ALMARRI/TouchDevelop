@@ -4,11 +4,10 @@ module TDev {
     export var debuggerExceptions = false;
     export var forceLocalStorage = false;
     export var withTracing = false;
-    export var dbg = false;
-    export var isBeta = false;
     export var asyncEnabled = true;
     export var isWebWorker = false;
     export var noHub = false;
+    export var hubHash = "hub";
 
     export interface StringMap<T>
     {

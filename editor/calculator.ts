@@ -240,7 +240,7 @@ module TDev
         private findInlineEditStringTokenIndex(start: number) : number {
             if (this.canInlineEditString(this.expr.tokens[start])) return start;
             if (start > 0 && this.canInlineEditString(this.expr.tokens[start - 1])) return start - 1;
-            if (start + 1 < this.expr.tokens.length && this.canInlineEditString(this.expr.tokens[start + 1])) return start + 1;
+            //if (start + 1 < this.expr.tokens.length && this.canInlineEditString(this.expr.tokens[start + 1])) return start + 1;
             return -1;
         }
 
@@ -1276,7 +1276,8 @@ module TDev
 
         private inlineLiteralEditor(l: AST.Literal) {
             var literalEditor: LiteralEditor;
-            if (/^bitmatrix$/.test(l.languageHint)) literalEditor = new BitMatrixLiteralEditor(this, l);
+            if (/^bitmatrix$/i.test(l.languageHint)) literalEditor = new BitMatrixLiteralEditor(this, l, true);
+            else if (/^bitframe$/i.test(l.languageHint)) literalEditor = new BitMatrixLiteralEditor(this, l, false);
             else literalEditor = new TextLiteralEditor(this, l);
             return literalEditor;
         }
@@ -2263,7 +2264,7 @@ module TDev
 
                 var s: IProperty[] = k.primaryKind.listProperties().slice(0);
                 var t = this.expr.tokens[this.cursorPosition-1];
-                if (k.primaryKind == api.core.String && t && t instanceof AST.Literal && (<AST.Literal>t).enumVal) {
+                if (k.primaryKind == api.core.String && t && t instanceof AST.Literal && ((<AST.Expr>t).enumVal || (<AST.Expr>t).languageHint)) {
                     // don't allow string editing on enum values
                     s = [];
                 }
@@ -3579,7 +3580,7 @@ module TDev
             return elt
         }
 
-        private getParameterStringValuesAtCursor()
+        private getParameterStringValuesAtCursor() : PropertyParameter
         {
             if (this.stmt instanceof AST.OptionalParameter &&
                 this.expr.tokens.slice(0, this.cursorPosition).every(t => t.getLiteral() || t.isDigit()))
@@ -3603,12 +3604,13 @@ module TDev
             if (!pp) return
             var stringValues = pp.getStringValues()
             if (!stringValues || stringValues.length <= 1) return
+            var isEnum = !!pp.enumMap;
             var picStringValues = Browser.lowMemory ? {} : (pp.getStringValueArtIds() || {});
             stringValues.forEach((s, i) => {
                 var e = this.mkIntelliItem(1e8 - i, Ticks.calcInsertStringParamterValue);
                 var isNum = pp.getKind() == api.core.Number
 
-                e.nameOverride = isNum ? s + "" : Util.fmt('"{0}"', s);
+                e.nameOverride = isNum ? s + "" : isEnum ? s : Util.fmt('"{0}"', s);
                 e.descOverride = "insert";
                 e.iconOverride = "svg:NumberedList,white";
                 e.colorOverride = "rgb(0, 204, 153)";
@@ -4325,8 +4327,13 @@ module TDev
                     label = lf("need a different name here")
                     setF = TipManager.setTip;
                 } else if (ins.editString) {
-                    intelliFilter = c => c.nameOverride == lf("edit");
-                    label = lf("need a different string here")
+                    if (ins.isEnumVal) {
+                        intelliFilter = c => c.nameOverride == ins.editString;
+                        label = lf("we need {0} here", ins.editString)
+                    } else {
+                        intelliFilter = c => c.nameOverride == lf("edit");
+                        label = lf("need a different string here")
+                    }
                     setF = TipManager.setTip;
                 } else if (th != null) {
                     intelliFilter = c => declMatch(th.getName(), c.decl)

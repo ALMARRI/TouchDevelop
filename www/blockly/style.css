@@ -71,6 +71,11 @@ body, input {
   font-size: 3rem;
 }
 
+#script-name, #script-description {
+  background-color: transparent;
+  border: 0;
+}
+
 #script-icons > *:not(:first-child) {
   display: inline-block;
   cursor: pointer;
@@ -184,8 +189,14 @@ body, input {
   text-align: center;
   font-size: 2.6rem;
   line-height: 3.8rem;
-  padding: .1em;
+  padding: .2rem;
   font-family: "Segoe UI Emoji", "Segoe UI Symbol", "Symbola", sans-serif;
+}
+
+.graduate-wrapper {
+  height: calc(4.2rem + 4px);
+  width: 6rem;
+  padding: .2rem;
 }
 
 .roundlabel {

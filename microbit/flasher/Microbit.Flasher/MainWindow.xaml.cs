@@ -15,7 +15,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 
-namespace WpfApplication1
+namespace Microsoft.MicroBit
 {
     /// <summary>
     /// Interaction logic for MainWindow.xaml
@@ -26,6 +26,7 @@ namespace WpfApplication1
         public MainWindow()
         {
             InitializeComponent();
+            this.DeleteOnFlash = true;
             this.updateStatus("loading...");
             var downloads = KnownFoldersNativeMethods.GetDownloadPath();
             if (downloads == null)
@@ -39,7 +40,7 @@ namespace WpfApplication1
             watcher.Created += (sender, e) => handleFileEvent(e);
             watcher.EnableRaisingEvents = true;
 
-            this.updateStatus("Ready to copy your .hex file to your BBC micro:bit.");
+            this.updateStatus("Waiting for .hex file...");
             this.handleActivation();
         }
 
@@ -76,6 +77,13 @@ namespace WpfApplication1
             set { SetValue(StatusProperty, value); }
         }
 
+        public static readonly DependencyProperty DeleteOnFlashProperty = DependencyProperty.Register("DeleteOnFlash", typeof(bool?), typeof(MainWindow));
+        public bool DeleteOnFlash
+        {
+            get { return (bool)GetValue(DeleteOnFlashProperty); }
+            set { SetValue(DeleteOnFlashProperty, value); }
+        }
+
         static string getVolumeLabel(DriveInfo di)
         {
             try { return di.VolumeLabel; }
@@ -98,7 +106,7 @@ namespace WpfApplication1
             try
             {
                 var info = new System.IO.FileInfo(fullPath);
-                if (info.Extension != ".hex")
+                if (info.Extension != ".hex" || !info.Name.StartsWith("microbit-", StringComparison.OrdinalIgnoreCase))
                     return;
 
                 this.updateStatus("detected " + info.Name);
@@ -106,16 +114,23 @@ namespace WpfApplication1
                 var drive = drives.FirstOrDefault(d => getVolumeLabel(d) == "MICROBIT");
                 if (drive == null)
                 {
-                    this.updateStatus("no BBC micro:bit detected, did you plug it?");
+                    this.updateStatus("no BBC micro:bit detected");
                     return;
                 }
 
-                this.updateStatus("flashing " + info.Name);
+                this.updateStatus("loading...");
 
                 var trg = System.IO.Path.Combine(drive.RootDirectory.FullName, "firmware.hex");
                 File.Copy(info.FullName, trg, true);
+                this.updateStatus("loading done");
 
-                this.updateStatus("flashed " + info.Name);
+                var del = (bool)Dispatcher.Invoke((Func<Boolean>)(() => this.DeleteOnFlash));
+                if (del)
+                {
+                    File.Delete(info.FullName);
+                    this.updateStatus("loading and cleaning done");
+                }
+
                 return;
             }
             catch (IOException) { }

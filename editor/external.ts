@@ -105,6 +105,9 @@ module TDev {
     }
 
     export function pullLatestLibraryVersion(pubId: string): Promise { // of string
+      var forced = ScriptCache.forcedUpdate(pubId)
+      if (forced) return Promise.as(forced.json.id)
+
       return Browser.TheApiCacheMgr.getAsync(pubId, Cloud.isOffline())
         .then((script: JsonScript) => {
           if (script) {
@@ -363,7 +366,7 @@ module TDev {
             break;
 
           case MessageType.Compile:
-            if (Cloud.anonMode(lf("Native compilation"))) {
+            if (Cloud.anonMode(lf("C++ compilation"))) {
               this.post(<Message_CompileAck>{
                 type: MessageType.CompileAck,
                 status: Status.Error,
@@ -463,6 +466,13 @@ module TDev {
       metadata: Metadata;
       pubId: string;
     };
+
+    window.addEventListener("resize", () => {
+      if (TheChannel)
+        TheChannel.post({
+          type: MessageType.Resized,
+        });
+    });
 
     // The [scriptVersionInCloud] name is the one that's used by [world.ts];
     // actually, it hasn't much to do, really, with the script version

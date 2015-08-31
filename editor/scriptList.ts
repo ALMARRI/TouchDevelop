@@ -28,7 +28,7 @@
                 var menuItems = [
                     { id: "createcode", name: lf("Create Code"), tick: Ticks.siteMenuCreateCode, handler: () => {
                         if (Cloud.isOffline() || /http:\/\/localhost/i.test(document.URL))
-                            TheHub.createScript();
+                            TemplateManager.createScript();
                         else     
                             Util.navigateInWindow("/create-code");
                     } },
@@ -144,7 +144,7 @@
         private topTitle = "???";
         private lastSearchValue = "";
         private shownSomething = false;
-        public treatAsScript:any = {};
+        public treatAsScript: StringMap<boolean> = {};
 
         public clearMeAsync(logout: boolean): Promise {
             Browser.TheApiCacheMgr.invalidate("me");
@@ -230,16 +230,6 @@
                 }
         }
         
-        private initCachedScripts(): Promise {            
-            var cached = Cloud.config.cachedScripts;
-            if (cached)
-                return Promise.join(cached.map(id =>
-                        External.pullLatestLibraryVersion(id)
-                        .then(scriptid => World.getAnyScriptAsync(scriptid))
-                    ));
-            return Promise.as();
-        }
-        
         public initMeAsync(): Promise {
             var id = Cloud.getUserId();
             if (!id) {
@@ -247,7 +237,6 @@
                 return Promise.as();
             }
             this.initBadgeTag();
-            this.initCachedScripts().done(() => { }, () => { });
             if (!Cloud.lite)
                 TheApiCacheMgr.getAnd("me", (u: JsonUser) => {
                     (<any>window).userName = u.name;
@@ -376,9 +365,12 @@
             d.add(div("wall-dialog-buttons",
                 HTML.mkButton(lf("agree"), () => {
                     tick(Ticks.legalNoticeAgree);
-                    if (Cloud.lite)
-                        document.cookie = "ckns_accept=111; path=/; expires=Fri, 31 Dec 9999 23:59:59 GMT"
-                    else
+                    Runtime.legalNotice = null;
+                    if (Cloud.lite) {
+                        if (!/ckns_policy=.0./.test(document.cookie))
+                            document.cookie = "ckns_accept=111; path=/; expires=" + 
+                                new Date(Date.now()+365*3600*24*1000).toUTCString();
+                    } else
                         localStorage["legalNotice"] = notice;
                     d.canDismiss = true;
                     d.dismiss();
@@ -1611,14 +1603,51 @@
                 } else if (h[1] == "ldscr") {
                     this.show();
                     TheEditor.historyMgr.setHash("list:ldscr:" + h[2], "Script parse test");
-                    AST.loadScriptAsync(World.getAnyScriptAsync, h[2]).done((res:AST.LoadScriptResult) => {
+                    AST.loadScriptAsync(World.getAnyScriptAsync, h[2]).done((res: AST.LoadScriptResult) => {
                         ModalDialog.showText(res.status)
                     });
                     return;
+                } else if (/^create|derive$/i.test(h[2]) && /^\w+$/.test(h[3])) {
+                    ProgressOverlay.show(lf("loading template"), () => {
+                        var scriptid = h[3];
+                        var forced = ScriptCache.forcedUpdate(scriptid);
+                        (forced ? Promise.as([forced.json, forced.text]) :
+                            TheApiCacheMgr.getAsync(scriptid, true)
+                                .then((scr: JsonScript) => {
+                                    if (scr && scr.updateid != scr.id) scriptid = scr.updateid;
+                                    return Promise.join([
+                                        TheApiCacheMgr.getAsync(scriptid),
+                                        ScriptCache.getScriptAsync(scriptid)]);
+                                })).done(arr => {
+                                    var scr: JsonScript = arr[0]
+                                    var txt: string = arr[1]
+                                    if (!scr || !txt) {
+                                        ProgressOverlay.hide();
+                                        return;
+                                    }
+                                    var t: ScriptTemplate = {
+                                        title: lf("Create a {0}", scr.name.replace(/ADJ/, "")),
+                                        id: "derive",
+                                        scriptid: scr.id,
+                                        icon: "",
+                                        description: "",
+                                        name: /ADJ/.test(scr.name) ? scr.name : lf("ADJ script"),
+                                        source: txt,
+                                        section: "",
+                                        editorMode: 0,
+                                        editor: scr.editor || "touchdevelop",
+                                        baseId: h[1] == "derive" ? scr.id : "",
+                                        baseUserId: scr.userid,
+                                        updateLibraries: true
+                                    }
+                                    ProgressOverlay.hide();
+                                    TemplateManager.createScriptFromTemplate(t);
+                                });
+                    });
                 } else {
                     var etag = <JsonEtag> { kind: h[2], id: h[3], ETag: "" }
                     if (etag.kind == "script" && !etag.id) {
-                        Util.setHash("hub")
+                        Util.setHash(TDev.hubHash)
                         return
                     }
                     pg = this.getAnyInfoByEtag(etag);
@@ -3961,10 +3990,11 @@
                 if (Cloud.lite)
                     // the call to /family is there to prefetch typical parents
                     TheApiCacheMgr.getAsync(this.getParentId() + "/family?count=10&etagsmode=includeetags", true)
-                    .done((prefetch) => {
-                        prefetch.items.forEach((e, i) => {
-                            TheApiCacheMgr.store(e.id, e, prefetch.etags && prefetch.etags[i] ? prefetch.etags[i].ETag : null, true);
-                        })
+                        .done((prefetch) => {
+                        if (prefetch)
+                            prefetch.items.forEach((e, i) => {
+                                TheApiCacheMgr.store(e.id, e, prefetch.etags && prefetch.etags[i] ? prefetch.etags[i].ETag : null, true);
+                            })
 
                         if (this.parent.publicId) {
                             Util.assert(!!js.id)
@@ -5408,6 +5438,62 @@
             this.art = a;
         }
 
+        static artReview(cont = "", back = null)
+        {
+            var m = new ModalDialog();
+            m.fullWhite();
+            m.stretchWide();
+            m.setScroll();
+            m.show()
+
+            TDev.Cloud.getPrivateApiAsync("art?count=300&continuation=" + cont)
+            .done(resp => {
+                var entries = []
+                var ids = []
+                resp.items.forEach((ja:JsonArt) => {
+                    if (ja.arttype != "picture") return;
+                    var flag = div("art-link", 
+                        HTML.mkLinkButton("flag", () => {
+                            flag.setChildren("flagging...")
+                            Cloud.postPrivateApiAsync(ja.id + "/abusereports", { text: "#reviewFlag" })
+                            .done(
+                                () => {
+                                    flag.setChildren(HTML.mkLinkButton(lf("delete"),
+                                        () => {
+                                            flag.setChildren(lf("deleting..."))
+                                            Cloud.deletePrivateApiAsync(ja.id)
+                                                .done(() => e.setChildren([]),
+                                                    e => Cloud.handlePostingError(e, lf("delete")))
+                                        }))
+                                },
+                                e => Cloud.handlePostingError(e, lf("report abuse")))
+                        })
+                    )
+                    var info = div("art-info", Math.round((Date.now()/1000 - ja.time) / 3600 / 24) + "d, by " + ja.username)
+                    var e = div("art-review",
+                        HTML.mkImg(ja.mediumthumburl || ja.pictureurl),
+                        info, flag)
+                    entries.push(e)
+                    ids.push(ja.id)
+                })
+                var next = HTML.mkButton(lf("next page"), () => {
+                    ArtInfo.artReview(resp.continuation, () => ArtInfo.artReview(cont, back))
+                })
+                if (!resp.continuation)
+                    next = null
+                var prev = HTML.mkButton(lf("prev page"), () => back())
+                if (!back)
+                    prev = null
+                var del = HTML.mkLinkButton(lf("delete all"), 
+                        () => {
+                            Promise.join(ids.map(id => Cloud.deletePrivateApiAsync(id)))
+                            .then(() => back())
+                        })
+                m.add(div(null, prev, next))
+                m.add(div(null, entries))
+            })
+        }
+
         public loadFromWeb(id:string)
         {
             this.publicId = id;
@@ -6492,9 +6578,10 @@
                         cont.push(div("sdNumber",
                             HTML.mkLinkButton("★ " + (hasOne ? lf("edit promo") : lf("add promo")),
                             () => this.editPromo())))
-                    else if (hasOne)
+                    else if (hasOne) {
                         cont.push(div("sdNumber", " ★"))
-
+                        nameBlock.setChildren([promo.name])
+                    }
                 }
 
                 numbers.setChildren(cont);
@@ -6801,8 +6888,8 @@
             if (this.correspondingTopic) {
                 var tas = this.browser().treatAsScript 
                 if (!tas.hasOwnProperty(this.publicId))
-                    tas[this.publicId] = Cloud.isRestricted() && Cloud.hasPermission("root-ptr") ? false : true
-                if (tas[this.publicId])
+                    tas[this.publicId] = Cloud.isRestricted() && Cloud.hasPermission("root-ptr")
+                if (!tas[this.publicId])
                     return this.correspondingTopic;
             }
             return this;
@@ -6816,6 +6903,7 @@
             // var ch = this.getTabs().map((t:BrowserTab) => t == this ? null : t.inlineContentContainer);
 
             var descDiv = div(null);
+            var preDescDiv = div(null);
             var metaDiv = div(null);
             var wontWork = div(null);
             var runBtns = div(null);
@@ -6826,6 +6914,7 @@
             this.tabContent.setChildren([
                 authorDiv,
                 runBtns,
+                preDescDiv,
                 descDiv,
                 metaDiv,
                 docsButtonDiv,
@@ -6842,6 +6931,14 @@
                 if (!this.jsonScript) return;
 
                 this.buildTopic();
+
+                if (this.publicId && Cloud.hasPermission("script-promo") && 
+                    this.jsonScript.promo)
+                {
+                    preDescDiv.setChildren([ 
+                        div("kw", this.jsonScript.promo.name),
+                        div(null, this.jsonScript.promo.description) ])
+                }
 
                 if (this.jsonScript.description) {
                     descDiv.classList.add('sdDesc');
@@ -7460,7 +7557,7 @@
                 World.getScriptRestoreAsync(id)
                 .then(r => restoreAsync = r)
                 .then(() => World.uninstallAsync(id))
-                .then(() => World.syncAsync())
+                // don't aggressively sync here
                 .then(() => {
                     var hash = HistoryMgr.windowHash()
 
@@ -7703,14 +7800,19 @@
             .done(arr => {
                 var cfg = arr[0]
                 var promo = arr[1]
+                if (json.ishidden && (!promo.tags || promo.tags.length == 0)) {
+                    ModalDialog.info(lf("script is hidden"), lf("Cannot add promo on a hidden script."))
+                    return
+                }
                 var fields = cfg.fields || {}
                 var alltags = cfg.tags || ["all"]
                 var autotags = cfg.autotags || ["all"]
                 fields["priority"] = { desc: lf("Publication time-shift (in hours); promos sorted by publication time plus time shift"), type: "number" }
                 fields["tags"] = { desc: lf("Tags (eg: {0})", alltags.join(", ")) }
                 var inputs = {}
+                var nowPrio = () => (((Date.now()/1000) - json.time) / 3600).toFixed(3)
                 if (!promo.priority && promo.tags && promo.tags.length == 0) {
-                    promo.priority = parseFloat((((Date.now()/1000) - json.time) / 3600).toFixed(3))
+                    promo.priority = parseFloat(nowPrio())
                 }
                 Object.keys(fields).forEach(fn => {
                     var meta = fields[fn]
@@ -7726,7 +7828,12 @@
                     var dsc = meta.desc || fn
                     if (meta.override)
                         dsc += lf(" [override]")
-                    m.add(div("wall-dialog-body", dsc, inp))
+                    var btn = null
+                    if (fn == "priority")
+                        btn = HTML.mkLinkButton(lf("make current"), () => {
+                            inp.value = nowPrio()
+                        })
+                    m.add(div("wall-dialog-body", dsc, btn, inp))
                 })
                 inputs["tags"].value = (promo["tags"] || []).filter(t => alltags.indexOf(t) >= 0).join(", ")
 
@@ -7766,7 +7873,12 @@
                         wrong.forEach(HTML.wrong)
                     } else {
                         Cloud.postPrivateApiAsync(id + "/promo", data)
-                        .done(r => m.dismiss(), e => Cloud.handlePostingError(e, "promo"))
+                        .done(r => {
+                            m.dismiss()
+                            TheApiCacheMgr.invalidate(id)
+                            TheApiCacheMgr.invalidate("promo-scripts/")
+                            TheEditor.historyMgr.reload(HistoryMgr.windowHash());
+                        }, e => Cloud.handlePostingError(e, "promo"))
                     }
                 }, "", [
                     //HTML.mkButton(lf("remove promo"), () => m.dismiss()),
@@ -9985,18 +10097,7 @@
                         })
                     }
 
-                    if (false && TheHost.backToEditor) {
-                        if (!m) {
-                            justFollow();
-                        } else {
-                            ModalDialog.askMany(lf("use template?"),
-                                                lf("do you want to follow the tutorial using your existing script or start a new script, as the tutorial author intended?"),
-                                                { "use existing": justFollow,
-                                                  "start new":  startNew })
-                        }
-                    } else {
-                        startNew();
-                    }
+                    startNew();
                 });
         }
 

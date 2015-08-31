@@ -190,7 +190,7 @@ module TDev
                 return !!x;
             }));
 
-            var maxCols = 45;            
+            var maxCols = 45;
             var f = 50; var f2 = f / 2;
             var r1 = "";
             var r0 = "";
@@ -224,6 +224,15 @@ module TDev
             return result;
         }
 
+        public renderHintArtId(v: string, id: string): string {
+            var url = Cloud.artUrl(id, true);
+            return Util.fmt("<img class='picLiteral' src='{0}' alt='{1}' />", url, Renderer.quoteString(TDev.RT.String_.trim_overflow(v, this.stringLimit)))
+        }
+        
+        public renderEnumVal(v: string): string {
+            return Renderer.tspan("stringLiteral", Renderer.quoteString(TDev.RT.String_.trim_overflow(v, this.stringLimit)));            
+        }
+        
         public renderString(v:string, lim = this.stringLimit) : string
         {
             return Renderer.tspan("stringLiteral", "\"" + Renderer.quoteString(TDev.RT.String_.trim_overflow(v, lim)) + "\"");
@@ -251,8 +260,10 @@ module TDev
                 div = Renderer.tspan("kw", v ? "true" : "false");
                 break;
             case "string":
-                if (/^bitmatrix$/.test(n.languageHint)) div = this.renderBitmatrix(v);
+                if (/^bitmatrix|bitframe$/i.test(n.languageHint)) div = this.renderBitmatrix(v);
+                else if (n.enumVal) div = this.renderEnumVal(v);
                 else div = this.renderString(v);
+                if (n.hintArtId) div += this.renderHintArtId(v, n.hintArtId);
                 break;
             default:
                 Util.die();
@@ -1051,7 +1062,7 @@ module TDev
             if ((<any>prop)._extensionAction) prop = (<any>prop)._extensionAction;            
             var propi = <IPropertyWithNamespaces>prop;            
             var isExtension = propi.isExtensionAction && propi.isExtensionAction();            
-            var params = prop.getParameters();
+            var params = prop.getParameters().slice(0);
             var hd = "";            
             if (withKeyword)           
                 hd += this.kw("function ");
@@ -1133,6 +1144,7 @@ module TDev
                       ".md-para { margin-top: 1em; margin-bottom: 1em; }\n"+
                       ".block .md-para { margin: 0; }\n"+
                       "span.stringLiteral { word-break: break-all; } div.stringLiteral { white-space:pre-wrap; }\n" +
+                      ".picLiteral { height:1em; vertical-align: bottom;}\n"+
                       ".md-warning { background-color:lightyellow; border-left:solid 0.25em red; padding:0.5em; margin-left:2em;}\n"+
                       "div.md-video-link { position: relative; } div.md-video-link > img { width: calc(100 % - 1em); } div.md-video-link > svg { position: absolute;left:0em; bottom: 0em; width:25%; } @media print { div.md-video-link > svg { display:none; }  }\n" +
                       "@media print { a.md-external-link:link:after, a.md-external-link:visited:after { content: ' (' attr(href) ') '; font-size: 80%; } }\n"+

@@ -19,6 +19,10 @@ module TDev {
 
       public as: J.JInlineAction[] = [];
 
+      constructor(private env: H.Env) {
+        super();
+      }
+
       public visitMany(e, ss: J.JNode[]) {
         ss.forEach((x) => this.visit(e, x));
       }
@@ -33,6 +37,8 @@ module TDev {
               this.visit([], a);
               this.as.push(a);
               lifted.push(a.reference.id);
+              var newName = H.resolveLocal(this.env, a.reference.name, a.reference.id);
+              a.reference.name = newName;
             } catch (e) {
               // Can't lift because it captures variables.
             }
@@ -137,18 +143,16 @@ module TDev {
     // (a.k.a. [JInlineAction]'s) out into top-level function definitions
     // (a.k.a. [JAction]'s). It assumes that these closures contain no free
     // variables, i.e. that closure-conversion has been performed already.
-    export function lift(a: J.JApp) {
-      var l = new Lifter();
+    export function lift(e: H.Env, a: J.JApp) {
+      var l = new Lifter(e);
       l.visit([], a);
       var lambdas = l.as.map((a: J.JInlineAction): J.JAction => {
         var name = a.reference.name;
+        var id = a.reference.id;
         return {
           nodeType: "action",
-          id: a.reference.id,
-          // The name needs to be unique, since it's going to be generated as a
-          // global (whose names are kept "as is"). So cram in the unique-id in
-          // there.
-          name: name+a.reference.id,
+          id: id,
+          name: name,
           inParameters: a.inParameters,
           outParameters: a.outParameters,
           isPrivate: false,

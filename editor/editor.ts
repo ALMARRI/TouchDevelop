@@ -193,6 +193,8 @@ module TDev
                         else if (/\.(xml|svg)$/i.test(name)) editor.getSession().setMode("ace/mode/xml");
                         else if (/\.css$/i.test(name)) editor.getSession().setMode("ace/mode/css");
                         else if (/\.html/i.test(name)) editor.getSession().setMode("ace/mode/html");
+                        else if (/\.sql/i.test(name)) editor.getSession().setMode("ace/mode/sql");
+                        else if (/\.mysql/i.test(name)) editor.getSession().setMode("ace/mode/mysql");
                         else if (/\.(h(pp)?|c(pp)?|cxx)/i.test(name)) editor.getSession().setMode("ace/mode/c_cpp");
                         editor.setValue(value);
                         editor.clearSelection();
@@ -327,7 +329,7 @@ module TDev
                     this.currentRt.runningPluginOn &&
                     TheEditor.forceReload) {
                     TheEditor.forceReload = false;
-                    TheEditor.reloadScriptAsync(this.currentRt.runningPluginOn, () => Util.setHash("hub", true))
+                    TheEditor.reloadScriptAsync(this.currentRt.runningPluginOn, () => Util.setHash(TDev.hubHash, true))
                     .done(() => TheEditor.pluginCompleted())
                 }
                 this.inLiveMode = false;
@@ -2150,7 +2152,10 @@ module TDev
                 var compileBtn: HTMLElement;
                 var str = Cloud.isFota() ? lf("flash") : lf("compile");
                 children.push(compileBtn = Editor.mkTopMenuItem("svg:fa-download,black", str, Ticks.codeCompile, "Ctrl-M",
-                    (e: Event) => this.compile(compileBtn, (<MouseEvent> e).ctrlKey || /dbgcpp=1/i.test(document.location.href)))
+                    (e: Event) => {
+                        this.runMainAction();
+                        this.compile(compileBtn, (<MouseEvent> e).ctrlKey || /dbgcpp=1/i.test(document.location.href));
+                    })
                     );
             }
 
@@ -2216,7 +2221,7 @@ module TDev
             this.backBtnDiv.setChildren([
                 this.hasModalPane() ?
                     Editor.mkTopMenuItem("svg:back,black", lf("dismiss"), Ticks.calcSearchBack, " Esc", () => this.dismissModalPane()) :
-                    TDev.noHub ? null : Editor.mkTopMenuItem("svg:back,black", lf("my scripts"), Ticks.codeHub, "Ctrl-I", () => this.backBtn())
+                    Editor.mkTopMenuItem("svg:back,black", lf("my scripts"), Ticks.codeHub, "Ctrl-I", () => this.backBtn())
             ])
         }
 
@@ -3450,7 +3455,7 @@ module TDev
 
         // A wrapper for the DOM Notifications we use
         private webNotification(body: string, tag: string, icon="") {
-            HTML.showWebNotification("TouchDevelop", {
+            HTML.showWebNotification("Touch Develop", {
                 body: body,
                 tag: tag,
                 icon: icon,
@@ -4121,7 +4126,7 @@ module TDev
             if (prevGuid)
                 hash = "list:" + path + ":script:" + prevGuid + ":" + tab;
             else
-                hash = "hub";
+                hash = TDev.hubHash;
 
             return this.onExitAsync().then(() => {
                 this.goToHub(hash);
@@ -5477,7 +5482,7 @@ module TDev
         {
             var num = 0;
             Script.libraries().forEach((l) => {
-                if (l.isPublished())
+                if (l.isPublished() && !ScriptCache.forcedUpdate(l.getId()))
                     Browser.TheApiCacheMgr.getAnd(l.getId(), (j:JsonScript) => {
                         var upd = null;
                         if (j.updateid && j.updateid != j.id && j.updatetime > j.time) upd = j.updateid;
@@ -5885,8 +5890,16 @@ module TDev
 
             if (l.guid)
                 entry.loading = World.getInstalledScriptAsync(l.guid).then(getApp);
-            else
-                entry.loading = ScriptCache.getScriptAsync(l.pubid).then(getApp);
+            else {
+                var forced = ScriptCache.forcedUpdate(l.pubid)
+                if (forced) {
+                    var app = getApp(forced.text)
+                    app._forcedUpdate = forced.json.id
+                    entry.loading = Promise.as(app);
+                }
+                else
+                    entry.loading = ScriptCache.getScriptAsync(l.pubid).then(getApp);
+            }
             return entry.loading;
         }
 
@@ -5896,6 +5909,8 @@ module TDev
         {
             return this.loadLibCoreAsync(l).then((app:AST.App) => {
                 l.resolved = app;
+                if (app && app._forcedUpdate)
+                    l.pubid = app._forcedUpdate;
                 if (!app && l.getId())
                     l.setError("TD141: cannot load target library");
             });
@@ -5943,7 +5958,7 @@ module TDev
 
         public reload(h:string)
         {
-            if (h == "#") h = "#hub"
+            if (h == "#") h = "#" + TDev.hubHash;
 
             var i = h.indexOf("#access_token=");
             if (i != -1) {
@@ -5953,8 +5968,12 @@ module TDev
                     ))
                     return;
                 window.localStorage["everLoggedIn"] = "yes";
-                Browser.TheHost.initMeAsync().done()
                 h = h.substr(0, i);
+                Browser.TheHost.initMeAsync().done(() => {
+                    var hs = decodeURIComponent(h.replace("#", "")).split(":")
+                    if (hs[0] == "redirect")
+                        Util.navigateInWindow("/" + hs[1].replace(/^\/+/, ""))
+                })
             }
 
             h = LocalProxy.updateDeploymentKey(h)
@@ -5991,8 +6010,11 @@ module TDev
                         hs = ["hub", "creategroup"];
                         break;
                     case "pub":
-                        hs = ["hub", "pub", hs[1] ];
-                        break;
+                        Browser.TheApiCacheMgr.getAsync(hs[1], true).done((d: JsonEtag) => {
+                            if (d) Util.setHash("list:installed-scripts:" + d.kind + ":" + d.id, true);
+                            else Util.setHash(TDev.hubHash, true);
+                        });
+                        return;
                     case "follow":
                         hs = ["hub", "follow", hs[1], hs[2]];
                         break;
@@ -6012,12 +6034,14 @@ module TDev
                         break;
                     case "signin":
                     case "login":
-                        hs = ["hub", "signin"]
+                        hs = ["hub", "signin", hs[1]]
                         break;
                     case "signout":
                     case "logout":
                         hs = ["hub", "signout"]
                         break;
+                    case "redirect":
+                        return;
                 }
 
                 if (hs[0] == "list" && hs[1] == "help") inEditor = true;
@@ -6097,7 +6121,7 @@ module TDev
                 // and then run it
                 Util.setHash("run:" + this.guid)
             } else {
-                Util.setHash("hub", true);
+                Util.setHash(TDev.hubHash, true);
             }
         }
     }
