@@ -1,13 +1,3 @@
-/* Fonts */
-@font-face {
-    font-family: "Deja Vu Sans Light";
-    src: url(DejaVuSans-ExtraLight.ttf);
-}
-
-div.calcButtonHelp {
-    font-family: "Segoe UI", "Segoe WP", "Deja Vu Sans", "Helvetica Neue", Sans-Serif;
-}
-
 .floatingFrown,
 .floatingSmilie,
 .navItemInner,
@@ -22,8 +12,6 @@ div.calcButtonHelp {
 .tutTileLinkMore,
 .hubSectionHeader
 {
-    font-family: "Segoe UI Light", "Segoe UI", "Segoe WP Light", "Segoe WP",
-             "Deja Vu Sans Light", "HelveticaNeue-Light", "Helvetica Neue Light", "Helvetica Neue", Sans-Serif;
     font-weight: 200;
 }
 
